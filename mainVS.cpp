@@ -10,7 +10,7 @@
 #include "serial/serial.h"
 #include <fstream>
 
-#define steps 200 // stepper motor steps
+//#define steps 200 // stepper motor steps
 #define staticError 14 // some error may be
 
 //using namespace std;
@@ -28,9 +28,9 @@ bool readyflag = false; // flag for arduino ready
 
 Mat frame; // cam matrix for main img
 int framecount = 0;
+int steps = 0;
 // FOCUS VAL TEST
 double F;
-
 //----------------------------------functions---------------------------------------
 void my_sleep(unsigned long milliseconds);
 void enumerate_ports();
@@ -55,7 +55,7 @@ string FNameArray[] = { "th_grad", "sq_grad", "SML", "Var", "Entropy", "SUMM" };
 // array pointer to a function;
 double (*Functions[])(Mat& img) = { th_grad, sq_grad, SML, Var, Entropy, SUMM };
 const int numF = sizeof(Functions) / sizeof(Functions[0]); // number of functions
-double FocusArray[numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
+//double FocusArray[numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
 
 int main(int argc, char **argv)
 {
@@ -98,15 +98,13 @@ int main(int argc, char **argv)
 	int apiID = cv::CAP_ANY;      // 0 = autodetect default API
 	cap.open(deviceID + apiID);
 
-	//	check if we succeeded
-	if (!cap.isOpened()) {
-		cerr << "ERROR! Unable to open camera\n";
-		return -1;
-	}
-
-	cout << "	enter ROI (int)" << endl;
+	cout << "	enter ROI (int)\n";
 	cin >> ROI;
-
+	cout << "	ROI = " << ROI << endl;
+	cout << "	enter steps/n";
+	cin >> steps;
+	cout << "	steps = " << steps << endl;
+	double* FocusArray = new double[steps];
 	//	GRAB AND WRITE LOOP
 	cout << "Start grabbing" << endl;
 
@@ -161,7 +159,7 @@ int main(int argc, char **argv)
 			in_min[i] = FocusArray[i][0];
 			maxstep[i] = FocusArray[i][0];
 		}
-		Mat FocusPlot(hist_h, hist_w, CV_8UC3, Scalar(255, 255, 255));
+		Mat FocusPlot(hist_h, hist_w, CV_8UC1, Scalar(255, 0, 0));
 
 		//find max,min
 		for (int cols = 0; cols < numF; cols++)
@@ -214,13 +212,12 @@ int main(int argc, char **argv)
 		imshow("FocusPLot", FocusPlot);
 		imwrite("FocusImagePlot.jpg", FocusPlot);
 
-
 		while (true) {
 		if (waitKey(5) >= 0) break;
 		}
 
 		// go back to maxstep
-		int focus = (int)maxstep[3] - staticError;
+		int focus = (int)maxstep[0] - staticError;
 		for (int i = framecount; i > focus; i--)
 		{
 			cap.read(frame);
@@ -246,6 +243,7 @@ int main(int argc, char **argv)
 		}
 		cap.read(frame);
 		imwrite("Img.jpg", frame);
+
 		//go stepper back to 0
 		for (int i = focus; i > 0; i--)
 		{
@@ -253,8 +251,12 @@ int main(int argc, char **argv)
 			if (waitKey(5) >= 0) break;
 		}
 	}
-	else { return -1; }
-return 0;
+	else
+	{
+	cerr << "ERROR! Unable to open camera\n";
+	return -1;
+	}
+	return 0;
 }
 //	Focus Functions-----------------------------------
 //Derivative
@@ -366,8 +368,7 @@ bool arduinoready(serial::Serial & my_serial)
 	{
 		cout << " Yes." << endl;
 		return 1;
-	}
-	else {
+	}else{
 		cout << " No." << endl;
 		return 0;
 	}
