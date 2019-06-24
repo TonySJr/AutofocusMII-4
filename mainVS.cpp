@@ -18,6 +18,7 @@ using namespace cv;
 using std::string;
 using std::exception;
 using std::cout;
+using std::cin;
 using std::cerr;
 using std::endl;
 using std::vector;
@@ -46,16 +47,15 @@ double Var(Mat& img); // working SKO
 double Entropy(Mat& img); //information
 double SUMM(Mat& img); //summ of intensity of all pixels
 
-//ROI array
-int ROIarr[] = { 150 };// , 110, 80, 50, 20 };
-const int ROI = (int)sizeof(ROIarr) / sizeof(ROIarr[0]);
-string NamesROIArr[] = { "150x150", "110x110", "80x80", "50x50", "20x20" };
+//ROI
+int ROI = 0;
+int x,y;
 //======================
 string FNameArray[] = { "th_grad", "sq_grad", "SML", "Var", "Entropy", "SUMM" };
 // array pointer to a function;
 double (*Functions[])(Mat& img) = { th_grad, sq_grad, SML, Var, Entropy, SUMM };
 const int numF = sizeof(Functions) / sizeof(Functions[0]); // number of functions
-double FocusArray[ROI][numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
+double FocusArray[numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
 
 int main(int argc, char **argv)
 {
@@ -104,11 +104,19 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
+	cout << "	enter ROI (int)" << endl;
+	cin >> ROI;
+
 	//	GRAB AND WRITE LOOP
 	cout << "Start grabbing" << endl;
 
 	if (readyflag == true && cap.isOpened())
-	{
+	{	
+		//ROI
+		x = (frame.cols / 2) - (ROI / 2);
+		y = (frame.rows / 2) - (ROI / 2);
+		Rect r(x, y, ROI, ROI);
+
 		for (;;)
 		{
 			cap.read(frame);
@@ -118,31 +126,25 @@ int main(int argc, char **argv)
 			}
 
 			cvtColor(frame, frame, COLOR_BGR2GRAY);
-			if (framecount < steps)
-			{
-				for ( int area = 0; area < ROI; area++)
-				{
-					//ROI
-					int x = (frame.cols / 2) - (ROIarr[area] / 2);
-					int y = (frame.rows / 2) - (ROIarr[area] / 2);
-					Rect r(x, y, ROIarr[area], ROIarr[area]);
-					Mat smallframe = frame(r);
 
-					//for each functions calc value and save to a proper array
-					for (int i = 0; i < numF; i++)
-					{
-						FocusArray[area][i][framecount] = Functions[i](smallframe);
-					}
+			if (framecount < steps)
+			{				
+				Mat smallframe = frame(r);
+
+				for (int i = 0; i < numF; i++) // calc funct value and save to a proper array
+				{
+					FocusArray[i][framecount] = Functions[i](smallframe);
 				}
+				
 				send_A_steps(my_serial, 2);
 				framecount++;
 			}
 			else
 				endflag = true;
+
 			cout << "	" << framecount << endl;
-			int x = (frame.cols / 2) - (ROIarr[0] / 2);
-			int y = (frame.rows / 2) - (ROIarr[0] / 2);
-			MyRect(frame, Point(x, y), Point(x + ROIarr[0], y + ROIarr[0]));
+			
+			MyRect(frame, Point(x, y), Point(x + ROI, y + ROI));
 			imshow("Live", frame);
 
 			if (waitKey(5) >= 0 || endflag == true) break;
@@ -151,35 +153,28 @@ int main(int argc, char **argv)
 		int hist_w = framecount, hist_h = 400;  // for frame hist
 
 		//initialyze arrays
-		double in_max[ROI][numF], in_min[ROI][numF], out_min = 0; // array of values for mapping arrays
-		double maxstep[ROI][numF]; // for stepper
-		for (int j = 0; j < ROI; j++)
+		double in_max[numF], in_min[numF], out_min = 0; // array of values for mapping arrays
+		double maxstep[numF]; // for stepper
+		for (int i = 0; i < numF; i++)
 		{
-			for (int i = 0; i < numF; i++)
-			{
-				in_max[j][i] = FocusArray[j][i][0];
-				in_min[j][i] = FocusArray[j][i][0];
-				maxstep[j][i] = FocusArray[j][i][0];
-			}
+			in_max[i] = FocusArray[i][0];
+			in_min[i] = FocusArray[i][0];
+			maxstep[i] = FocusArray[i][0];
 		}
-
 		Mat FocusPlot(hist_h, hist_w, CV_8UC3, Scalar(255, 255, 255));
 
 		//find max,min
-		for (int j = 0; j < ROI; j++)
+		for (int cols = 0; cols < numF; cols++)
 		{
-			for (int cols = 0; cols < numF; cols++)
+			for (int rows = 0; rows < framecount; rows++)
 			{
-				for (int rows = 0; rows < framecount; rows++)
+				if (FocusArray[cols][rows] > in_max[cols])
 				{
-					if (FocusArray[j][cols][rows] > in_max[j][cols])
-					{
-						in_max[j][cols] = FocusArray[j][cols][rows];
-						maxstep[j][cols] = rows;
-					}
-					else if (FocusArray[j][cols][rows] < in_min[j][cols])
-						in_min[j][cols] = FocusArray[j][cols][rows];
+					in_max[cols] = FocusArray[cols][rows];
+					maxstep[cols] = rows;
 				}
+				else if (FocusArray[cols][rows] < in_min[cols])
+					in_min[cols] = FocusArray[cols][rows];
 			}
 		}
 		/*
@@ -196,14 +191,11 @@ int main(int argc, char **argv)
 		*/
 		
 		//map hight
-		for (int j = 0; j < ROI; j++)
+		for (int cols = 0; cols < numF; cols++)
 		{
-			for (int cols = 0; cols < numF; cols++)
+			for (int rows = 0; rows < framecount; rows++)
 			{
-				for (int rows = 0; rows < framecount; rows++)
-				{
-					FocusArray[j][cols][rows] = ((FocusArray[j][cols][rows] - in_min[j][cols]) * (hist_h - out_min)) / ((in_max[j][cols] - in_min[j][cols]) + out_min);
-				}
+				FocusArray[cols][rows] = ((FocusArray[cols][rows] - in_min[cols]) * (hist_h - out_min)) / ((in_max[cols] - in_min[cols]) + out_min);
 			}
 		}
 		/*
@@ -215,8 +207,8 @@ int main(int argc, char **argv)
 		
 		//draw and save hist
 		for (int i = 1; i < framecount; i++)
-			line(FocusPlot, Point((i - 1), hist_h - cvRound(FocusArray[3][0][i - 1])),
-				Point(i, hist_h - cvRound(FocusArray[3][0][i])),
+			line(FocusPlot, Point((i - 1), hist_h - cvRound(FocusArray[0][i - 1])),
+				Point(i, hist_h - cvRound(FocusArray[0][i])),
 				Scalar(0, 0, 0), 2, 4, 0);
 
 		imshow("FocusPLot", FocusPlot);
@@ -228,7 +220,7 @@ int main(int argc, char **argv)
 		}
 
 		// go back to maxstep
-		int focus = (int)maxstep[0][3] - staticError;
+		int focus = (int)maxstep[3] - staticError;
 		for (int i = framecount; i > focus; i--)
 		{
 			cap.read(frame);
