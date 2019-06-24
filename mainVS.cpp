@@ -9,7 +9,6 @@
 #include <windows.h>
 #include "serial/serial.h"
 #include <fstream>
-#include <chrono>
 
 #define steps 200 // stepper motor steps
 #define staticError 14 // some error may be
@@ -28,9 +27,8 @@ bool readyflag = false; // flag for arduino ready
 
 Mat frame; // cam matrix for main img
 int framecount = 0;
-int frametime = 0;
 // FOCUS VAL TEST
-double F, firstF, lastF;
+double F;
 
 //----------------------------------functions---------------------------------------
 void my_sleep(unsigned long milliseconds);
@@ -58,9 +56,6 @@ string FNameArray[] = { "th_grad", "sq_grad", "SML", "Var", "Entropy", "SUMM" };
 double (*Functions[])(Mat& img) = { th_grad, sq_grad, SML, Var, Entropy, SUMM };
 const int numF = sizeof(Functions) / sizeof(Functions[0]); // number of functions
 double FocusArray[ROI][numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
-
-//chrono
-__int64 timem[numF][50];
 
 int main(int argc, char **argv)
 {
@@ -136,19 +131,11 @@ int main(int argc, char **argv)
 					//for each functions calc value and save to a proper array
 					for (int i = 0; i < numF; i++)
 					{
-						auto begin = std::chrono::steady_clock::now();
-
 						FocusArray[area][i][framecount] = Functions[i](smallframe);
-
-						auto end = std::chrono::steady_clock::now();
-						auto elapsed_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-						timem[i][frametime] = elapsed_ms.count();
 					}
 				}
 				send_A_steps(my_serial, 2);
 				framecount++;
-				if (frametime < 49)
-					frametime++;
 			}
 			else
 				endflag = true;
@@ -195,17 +182,19 @@ int main(int argc, char **argv)
 				}
 			}
 		}
-		//for (int i = 0; i < framecount; i++)
-		//{
-		//	if (FocusArray[i] > in_max)
-		//	{
-		//		in_max = FocusArray[i];
-		//		maxstep = abs(i - staticError);
-		//	}
-		//	else if (FocusArray[i] < in_min)
-		//		in_min = FocusArray[i];
-		//}
-
+		/*
+		for (int i = 0; i < framecount; i++)
+		{
+			if (FocusArray[i] > in_max)
+			{
+				in_max = FocusArray[i];
+				maxstep = abs(i - staticError);
+			}
+			else if (FocusArray[i] < in_min)
+				in_min = FocusArray[i];
+		}
+		*/
+		
 		//map hight
 		for (int j = 0; j < ROI; j++)
 		{
@@ -233,52 +222,6 @@ int main(int argc, char **argv)
 		imshow("FocusPLot", FocusPlot);
 		imwrite("FocusImagePlot.jpg", FocusPlot);
 
-		//save in da file
-		std::ofstream Data("Data.txt", std::ios_base::app); // all data's
-		if (Data.is_open())
-		{
-			for (int j = 0; j < ROI; j++)
-			{
-				Data << NamesROIArr[j] << endl;
-				for (int i = 0; i < numF; i++)
-				{
-					Data << FNameArray[i] << endl;
-					for (int k = 0; k < framecount; k++)
-					{
-						Data << round(FocusArray[j][i][k]) << ";";
-					}
-					Data << endl;
-				}
-			}
-			Data.close();
-		}
-		else cout << "Unable to open file";
-		cout << "File Data.txt written" << endl;
-
-		//normalize time, average
-		__int64 timearr[numF];
-		for (int i = 0; i < numF; i++)
-		{
-			__int64 h = 0;
-			for (int j = 0; j < frametime; j++)
-			{
-				h += timem[i][j];
-			}
-			timearr[i] = round(h / frametime);
-		}
-
-		std::ofstream Time("Time.txt", std::ios_base::app);
-		if (Time.is_open())
-		{
-			for (int i = 0; i < numF; i++)
-			{
-				Time << FNameArray[i] << "	" << timearr[i] << ";" << endl;
-			}
-			Time << endl;
-			Time.close();
-		}
-		else cout << "Unable to open file";
-		cout << "File Time.txt written" << endl;
 
 		while (true) {
 		if (waitKey(5) >= 0) break;
