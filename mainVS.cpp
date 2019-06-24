@@ -29,7 +29,7 @@ bool readyflag = false; // flag for arduino ready
 Mat frame; // cam matrix for main img
 int framecount = 0;
 int steps = 0;
-// FOCUS VAL TEST
+// FOCUS VAL 
 double F;
 //----------------------------------functions---------------------------------------
 void my_sleep(unsigned long milliseconds);
@@ -45,18 +45,17 @@ double sq_grad(Mat& img);
 double SML(Mat& img); //derivative
 double Var(Mat& img); // working SKO
 double Entropy(Mat& img); //information
-double SUMM(Mat& img); //summ of intensity of all pixels
 
 //ROI
 int ROI = 0;
 int x,y;
 //======================
-string FNameArray[] = { "th_grad", "sq_grad", "SML", "Var", "Entropy", "SUMM" };
+string FNameArray[] = { "th_grad", "sq_grad", "SML", "Var", "Entropy" };
 // array pointer to a function;
-double (*Functions[])(Mat& img) = { th_grad, sq_grad, SML, Var, Entropy, SUMM };
+double (*Functions[])(Mat& img) = { th_grad, sq_grad, SML, Var, Entropy };
 const int numF = sizeof(Functions) / sizeof(Functions[0]); // number of functions
 //double FocusArray[numF][steps]; // array with 'numF' colums and "steps" rows for values of focus functions
-
+int fuc = 0;
 int main(int argc, char **argv)
 {
 	//	connect arduino
@@ -72,18 +71,18 @@ int main(int argc, char **argv)
 		enumerate_ports();
 		return 0;
 	}
-	else if (argc < 3) {
-		print_usage();
-		return 1;
-	}
+	//else if (argc < 3) {
+	//	print_usage();
+	//	return 1;
+	//}
 
 	// Argument 2 is the baudrate
-	unsigned long baud = 0;
-#if defined(WIN32) && !defined(__MINGW32__)
-	sscanf_s(argv[2], "%lu", &baud);
-#else
-	sscanf(argv[2], "%lu", &baud);
-#endif
+	unsigned long baud = 9600;
+//#if defined(WIN32) && !defined(__MINGW32__)
+//	sscanf_s(argv[2], "%lu", &baud);
+//#else
+//	sscanf(argv[2], "%lu", &baud);
+//#endif
 
 	// port, baudrate, timeout in milliseconds
 	serial::Serial my_serial(port, baud, serial::Timeout::simpleTimeout(200));
@@ -101,14 +100,27 @@ int main(int argc, char **argv)
 	cout << "	enter ROI (int)\n";
 	cin >> ROI;
 	cout << "	ROI = " << ROI << endl;
-	cout << "	enter steps/n";
+	cout << "	enter steps\n";
 	cin >> steps;
 	cout << "	steps = " << steps << endl;
 	double* FocusArray = new double[steps];
+	cout << "	choose function\n";
+	for (int i = 0; i < numF; i++) 
+	{
+		cout << FNameArray[i] << "	";
+	}
+	cout << endl;
+	for (int i = 0; i < numF; i++)
+	{
+		cout << i << "	";
+	}
+	cout << endl;
+	cin >> fuc;
+	cout << "	fuc is = " << fuc << endl;
 	//	GRAB AND WRITE LOOP
 	cout << "Start grabbing" << endl;
 
-	if (readyflag == true && cap.isOpened())
+	if (readyflag == true && cap.isOpened() && steps != 0)
 	{	
 		//ROI
 		x = (frame.cols / 2) - (ROI / 2);
@@ -128,20 +140,14 @@ int main(int argc, char **argv)
 			if (framecount < steps)
 			{				
 				Mat smallframe = frame(r);
-
-				for (int i = 0; i < numF; i++) // calc funct value and save to a proper array
-				{
-					FocusArray[i][framecount] = Functions[i](smallframe);
-				}
-				
+				FocusArray[framecount] = Functions[fuc](smallframe);
 				send_A_steps(my_serial, 2);
 				framecount++;
+				cout << "	" << framecount << endl;
 			}
 			else
 				endflag = true;
 
-			cout << "	" << framecount << endl;
-			
 			MyRect(frame, Point(x, y), Point(x + ROI, y + ROI));
 			imshow("Live", frame);
 
@@ -150,64 +156,37 @@ int main(int argc, char **argv)
 
 		int hist_w = framecount, hist_h = 400;  // for frame hist
 
-		//initialyze arrays
-		double in_max[numF], in_min[numF], out_min = 0; // array of values for mapping arrays
-		double maxstep[numF]; // for stepper
-		for (int i = 0; i < numF; i++)
-		{
-			in_max[i] = FocusArray[i][0];
-			in_min[i] = FocusArray[i][0];
-			maxstep[i] = FocusArray[i][0];
-		}
+		//initialyze map variables
+		double in_max = FocusArray[0];
+		double in_min = FocusArray[0];
+		double maxstep = FocusArray[0];
+		double out_min = 0;
+
 		Mat FocusPlot(hist_h, hist_w, CV_8UC1, Scalar(255, 0, 0));
 
 		//find max,min
-		for (int cols = 0; cols < numF; cols++)
+		for (int rows = 0; rows < framecount; rows++)
 		{
-			for (int rows = 0; rows < framecount; rows++)
+			if (FocusArray[rows] > in_max)
 			{
-				if (FocusArray[cols][rows] > in_max[cols])
-				{
-					in_max[cols] = FocusArray[cols][rows];
-					maxstep[cols] = rows;
-				}
-				else if (FocusArray[cols][rows] < in_min[cols])
-					in_min[cols] = FocusArray[cols][rows];
+				in_max = FocusArray[rows];
+				maxstep = rows;
 			}
+			else if (FocusArray[rows] < in_min)
+				in_min = FocusArray[rows];
 		}
-		/*
-		for (int i = 0; i < framecount; i++)
-		{
-			if (FocusArray[i] > in_max)
-			{
-				in_max = FocusArray[i];
-				maxstep = abs(i - staticError);
-			}
-			else if (FocusArray[i] < in_min)
-				in_min = FocusArray[i];
-		}
-		*/
-		
+
 		//map hight
-		for (int cols = 0; cols < numF; cols++)
-		{
-			for (int rows = 0; rows < framecount; rows++)
-			{
-				FocusArray[cols][rows] = ((FocusArray[cols][rows] - in_min[cols]) * (hist_h - out_min)) / ((in_max[cols] - in_min[cols]) + out_min);
-			}
-		}
-		/*
 		for (int i = 0; i < framecount;i++)
 		{
 			FocusArray[i] = ((FocusArray[i] - in_min) * (hist_h - out_min)) / (in_max - in_min) + out_min;
 		}
-		*/
 		
 		//draw and save hist
 		for (int i = 1; i < framecount; i++)
-			line(FocusPlot, Point((i - 1), hist_h - cvRound(FocusArray[0][i - 1])),
-				Point(i, hist_h - cvRound(FocusArray[0][i])),
-				Scalar(0, 0, 0), 2, 4, 0);
+			line(FocusPlot, Point((i - 1), hist_h - cvRound(FocusArray[i - 1])),
+				Point(i, hist_h - cvRound(FocusArray[i])),
+				Scalar(0, 0, 0), 1, 4, 0);
 
 		imshow("FocusPLot", FocusPlot);
 		imwrite("FocusImagePlot.jpg", FocusPlot);
@@ -217,7 +196,7 @@ int main(int argc, char **argv)
 		}
 
 		// go back to maxstep
-		int focus = (int)maxstep[0] - staticError;
+		int focus = (int)maxstep - staticError;
 		for (int i = framecount; i > focus; i--)
 		{
 			cap.read(frame);
@@ -253,9 +232,10 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-	cerr << "ERROR! Unable to open camera\n";
-	return -1;
+		cerr << "ERROR! Unable to open camera\n";
+		return -1;
 	}
+	delete[] FocusArray;
 	return 0;
 }
 //	Focus Functions-----------------------------------
@@ -342,23 +322,6 @@ double Entropy(Mat & smallframe)
 		F += P * std::log2(P);
 	}
 	return -F;
-}
-//Intuitive
-double SUMM(Mat & smallframe)
-{
-	F = 0.0;
-	uint8_t threshold = 120;
-	for (int y = 0; y < smallframe.rows; y++)
-	{
-		for (int x = 0; x < smallframe.cols; x++)
-		{
-			if (smallframe.at<uint8_t>(y, x) >= threshold)
-			{
-				F++;
-			}
-		}
-	}
-	return F;
 }
 //-----------------------------------------------------------
 bool arduinoready(serial::Serial & my_serial)
