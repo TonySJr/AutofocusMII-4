@@ -1,11 +1,12 @@
-## Инструкция по использованию автофокусировки на МИИ-4
-# Подготовка установки к работе
+# Инструкция по использованию автофокусировки на МИИ-4
+## Подготовка установки к работе
 
-## Welcome to GitHub Pages
+1. Подключить микроконтроллер ардуино к компьютеру
+2. Включить блок питания шагового двигателя в сеть
+3. Запустить програмное обеспечение на компьютере
 
-You can use the [editor on GitHub](https://github.com/TonySJr/AutofocusMII-4/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+## Инструкция по использованию програмного обеспечения
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
 
 ### Markdown
 
